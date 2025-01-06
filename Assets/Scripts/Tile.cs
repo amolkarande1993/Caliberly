@@ -8,11 +8,13 @@ public class Tile : MonoBehaviour
     [SerializeField] Image backImage;
     [SerializeField] Image frontImage;
 
-    public int id;
+    public int ID;
+    public int Row;
+    public int Column;
 
-    public delegate void SimpleEvent(Tile A);
+    public delegate void TileClicked(Tile A);
 
-    public static event SimpleEvent OnSimpleEvent;
+    public static event TileClicked OnTileClicked;
 
     private void Awake()
     {
@@ -27,7 +29,7 @@ public class Tile : MonoBehaviour
     public void OnClick()
     {
         Show();
-        OnSimpleEvent?.Invoke(this);
+        OnTileClicked?.Invoke(this);
     }
 
     public void SetData(Sprite image) {

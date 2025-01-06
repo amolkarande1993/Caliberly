@@ -4,185 +4,383 @@ using UnityEngine;
 using System.Collections;
 using UnityEngine.UI;
 using UnityEngine.EventSystems;
+using TMPro;
 
+#region Data Models
+[System.Serializable]
+public class TileData
+{
+    public int Row;
+    public int Column;
+    public int ID;
+}
+
+[System.Serializable]
+public class GameData
+{
+    public string PlayMode;
+    public int PlayerScore;
+    public List<TileData> Tiles;
+
+    public GameData()
+    {
+        PlayerScore = 0;
+        Tiles = new List<TileData>();
+    }
+}
+#endregion
 
 public class GameController : MonoBehaviour
 {
-    const int EasyModeGridSizeWidth = 2;
-    const int EasyModeGridSizeHeight = 2;
-    const int MediumModeGridSizeWidth = 2; 
-    const int MediumModeGridSizeHeight = 3;
-    const int HardModeGridSizeWidth = 5; 
-    const int HardModeGridSizeHeight = 6;
+    #region Constants
+    private const int EasyModeWidth = 2;
+    private const int EasyModeHeight = 2;
+    private const int MediumModeWidth = 2;
+    private const int MediumModeHeight = 3;
+    private const int HardModeWidth = 5;
+    private const int HardModeHeight = 6;
+    private const float TimerDuration = 120f;  // 2min 
+    #endregion
 
-    [SerializeField] GameObject mainMenu;
-    [SerializeField] GameObject gamePlayScreen;
+    #region Serialized Fields
+    [Header("UI References")]
+    [SerializeField] private GameObject mainMenu;
+    [SerializeField] private GameObject gameplayScreen;
+    [SerializeField] private TMP_Text timerText;
+    [SerializeField] private GameObject loadSavedGameButton;
 
-    [SerializeField] Tile tilePrefab;
-    [SerializeField] Transform tiletransform;
-    [SerializeField] Data data;
-    [SerializeField] ToggleGroup toggleGroup;
-    [SerializeField] ContentSizeFitter sizeFitter;
-    [SerializeField] GridLayoutGroup layoutGroup;
-    [SerializeField] EventSystem eventSystem;
+    [Header("Game Components")]
+    [SerializeField] private Tile tilePrefab;
+    [SerializeField] private Transform tileParent;
+    [SerializeField] private Tile blankTile;
+    [SerializeField] private Data scriptableData;
+    [SerializeField] private ToggleGroup toggleGroup;
 
-    Tile tileA;
-    Tile tileB;
+    [Header("Audio")]
+    [SerializeField] private AudioClip matchSound;
+    [SerializeField] private AudioClip mismatchSound;
+    [SerializeField] private AudioClip flipSound;
+    [SerializeField] private AudioClip gameOverSound;
+    [SerializeField] private AudioSource audioSource;
 
-    List<Tile> tiles = new List<Tile>();
+    [Header("Save/Load")]
+    [SerializeField] private SaveLoadManager saveLoadManager;
 
-    void Awake()
+    [Header("Grid Settings")]
+    [SerializeField] private ContentSizeFitter sizeFitter;
+    [SerializeField] private GridLayoutGroup layoutGroup;
+    [SerializeField] private EventSystem eventSystem;
+    #endregion
+
+    #region Private Fields
+    private Tile firstSelectedTile;
+    private Tile secondSelectedTile;
+    private List<Tile> tiles = new List<Tile>();
+    private List<TileData> tileDataList = new List<TileData>();
+    private GameData currentGameData;
+    private string selectedGameMode;
+    private int gridWidth;
+    private int gridHeight;
+    private float remainingTime;
+    private bool isGameOver;
+    #endregion
+
+    #region Unity Methods
+    private void Awake()
     {
-        Tile.OnSimpleEvent += onTileClicked;
+        Tile.OnTileClicked += HandleTileClicked;
         mainMenu.SetActive(true);
-        gamePlayScreen.SetActive(false);
+        gameplayScreen.SetActive(false);
     }
 
-    public void OnPlayButtonClicked() 
+    private void Start()
     {
-        int boardSizeWidth  = 0;
-        int boardSizeHeight = 0;
-        switch (GetSelectedToggleName())
-        {
-            case "Easy":
-                boardSizeWidth = EasyModeGridSizeWidth;
-                boardSizeHeight = EasyModeGridSizeWidth;
-                break;
-            case "Medium":
-                boardSizeWidth = MediumModeGridSizeWidth;
-                boardSizeHeight = MediumModeGridSizeHeight;
-                break;
-            case "Hard":
-                boardSizeWidth = HardModeGridSizeWidth;
-                boardSizeHeight = HardModeGridSizeHeight;
-                break;
-            default:
-                break;
-        }
+        var savedGameData = saveLoadManager.LoadGame();
+        loadSavedGameButton.SetActive(savedGameData != null && savedGameData.Tiles.Count > 0);
+    }
 
-        CreateLevel(boardSizeWidth, boardSizeHeight);
+    private void Update()
+    {
+        if (isGameOver || mainMenu.activeSelf) return;
+
+        UpdateTimer();
+        CheckForGameOver();
+    }
+    #endregion
+
+    #region Game Management
+    public void StartNewGame()
+    {
+        selectedGameMode = GetSelectedToggleName();
+        SetBoardSize(selectedGameMode);
+
+        CreateGameBoard();
         mainMenu.SetActive(false);
-        gamePlayScreen.SetActive(true);
+        gameplayScreen.SetActive(true);
     }
 
-    public void onTileClicked(Tile tile) {
-
-        sizeFitter.enabled = false;
-        layoutGroup.enabled = false;
-
-        if (tileA == null)
-            tileA = tile;
-        else
-        {
-            tileB = tile;
-            eventSystem.enabled = false;
-            if (tileA.id != tileB.id)
-            {
-                StartCoroutine(DelayHide());         
-            }
-            else {
-                StartCoroutine(DelayDestroy());
-                
-            }
-        }
-    }
-
-    public void CreateLevel(int width, int height)
+    public void LoadSavedGame()
     {
-        var randomNumber = GenerateRandomArray(width, height);
-        var counter = 0;
-        for (int i = 0; i < width; i++)
-        {
-            for (int j = 0; j < height; j++)
-            {
-                var tile = Instantiate(tilePrefab, tiletransform);
-                tile.id = randomNumber[counter];
-                tile.SetData(data.GetAsset(tile.id));
-                counter++;
-                tiles.Add(tile);
-            }
-        }
+        var savedData = saveLoadManager.LoadGame(); 
+        SetBoardSize(savedData.PlayMode);
+        LoadGameBoard(savedData);
+
+        mainMenu.SetActive(false);
+        gameplayScreen.SetActive(true);
     }
 
-    public void OnCloseClicked()
+    public void CloseGame()
     {
-        DeleteTiles();
-        Restart();
+        ClearTiles();
+        ResetGame();
     }
 
-    void Restart()
+    private void ResetGame()
     {
         sizeFitter.enabled = true;
         layoutGroup.enabled = true;
-        mainMenu.SetActive(true);
-        gamePlayScreen.SetActive(false);
-        tiles.Clear();
-    }
 
-    void DeleteTiles()
+        mainMenu.SetActive(true);
+        gameplayScreen.SetActive(false);
+
+        tiles.Clear();
+        isGameOver = false;
+
+        saveLoadManager.SaveGame(currentGameData);
+        loadSavedGameButton.SetActive(currentGameData != null && currentGameData.Tiles.Count > 0);
+
+    }
+    #endregion
+
+    #region Tile Management
+    private void HandleTileClicked(Tile clickedTile)
     {
-        for (int i = 0; i < tiletransform.childCount; i++)
+        sizeFitter.enabled = false;
+        layoutGroup.enabled = false;
+
+        PlaySound(flipSound);
+
+        if (firstSelectedTile == null)
         {
-            Destroy(tiletransform.GetChild(i).gameObject);
+            firstSelectedTile = clickedTile;
+        }
+        else
+        {
+            secondSelectedTile = clickedTile;
+            eventSystem.enabled = false;
+
+            if (firstSelectedTile.ID != secondSelectedTile.ID)
+            {
+                StartCoroutine(HandleMismatch());
+            }
+            else
+            {
+                StartCoroutine(HandleMatch());
+            }
         }
     }
-    IEnumerator DelayHide()
+
+    private IEnumerator HandleMismatch()
     {
         yield return new WaitForSeconds(0.5f);
-        tileA.Hide();
-        tileB.Hide();
-        tileA = null;
-        tileB = null;
+        firstSelectedTile.Hide();
+        secondSelectedTile.Hide();
+        ResetTileSelection();
+        PlaySound(mismatchSound);
+    }
+
+    private IEnumerator HandleMatch()
+    {
+        yield return new WaitForSeconds(0.5f);
+
+        RemoveTileData(firstSelectedTile);
+        RemoveTileData(secondSelectedTile);
+
+        tiles.Remove(firstSelectedTile);
+        tiles.Remove(secondSelectedTile);
+
+        Destroy(firstSelectedTile.gameObject);
+        Destroy(secondSelectedTile.gameObject);
+
+        currentGameData.Tiles = tileDataList;
+
+        ResetTileSelection();
+        PlaySound(matchSound);
+    }
+
+    private void ResetTileSelection()
+    {
+        firstSelectedTile = null;
+        secondSelectedTile = null;
         eventSystem.enabled = true;
     }
 
-    IEnumerator DelayDestroy()
+    private void RemoveTileData(Tile tile)
     {
+        var data = tileDataList.Find(t => t.Row == tile.Row && t.Column == tile.Column);
+        if (data != null) tileDataList.Remove(data);
+    }
+    #endregion
 
-        yield return new WaitForSeconds(0.5f);
-        Destroy(tileA.gameObject);
-        Destroy(tileB.gameObject);
-        eventSystem.enabled = true;
+    #region Game Board Management
+    private void CreateGameBoard()
+    {
+        int[] randomNumbers = GenerateRandomArray(gridWidth, gridHeight);
+        int counter = 0;
+
+        currentGameData = new GameData { PlayMode = selectedGameMode };
+        tileDataList.Clear();
+
+        for (int row = 0; row < gridWidth; row++)
+        {
+            for (int col = 0; col < gridHeight; col++)
+            {
+                var tile = Instantiate(tilePrefab, tileParent);
+                tile.ID = randomNumbers[counter];
+                tile.Row = row;
+                tile.Column = col;
+                tile.SetData(scriptableData.GetAsset(tile.ID));
+
+                tileDataList.Add(new TileData { Row = row, Column = col, ID = tile.ID });
+                tiles.Add(tile);
+                counter++;
+            }
+        }
+
+        remainingTime = TimerDuration;
+        isGameOver = false;
+        currentGameData.Tiles = tileDataList;
+        saveLoadManager.SaveGame(currentGameData);
     }
 
-    string GetSelectedToggleName()
+    private void LoadGameBoard(GameData savedData)
     {
-        foreach (var toggle in toggleGroup.GetComponentsInChildren<Toggle>())
-            if (toggle.isOn)
-                return toggle.name;
+        ClearTiles();
 
-        return null;
+
+        currentGameData = new GameData { PlayMode = savedData.PlayMode };
+        SetBoardSize(currentGameData.PlayMode);
+        tileDataList = new List<TileData>(savedData.Tiles);
+
+        for (int row = 0; row < gridWidth; row++)
+        {
+            for (int col = 0; col < gridHeight; col++)
+            {
+                var tileSavedData = savedData.Tiles.Find(t => t.Row == row && t.Column == col);
+                if (tileSavedData != null)
+                {
+                    var tile = Instantiate(tilePrefab, tileParent);
+                    tile.Row = tileSavedData.Row;
+                    tile.Column = tileSavedData.Column;
+                    tile.ID = tileSavedData.ID;
+                    tile.SetData(scriptableData.GetAsset(tile.ID));
+                    tiles.Add(tile);
+                }
+                else
+                    Instantiate(blankTile, tileParent);
+            }
+        }
+
+        remainingTime = TimerDuration;
+        isGameOver = false;
+        currentGameData.Tiles = tileDataList;
+        saveLoadManager.SaveGame(currentGameData);
     }
 
-    int[] GenerateRandomArray(int width, int height)
+    private int[] GenerateRandomArray(int width, int height)
     {
         int[] numbers = new int[width * height];
-        int count = 1;
-        for (int i = 0; i < numbers.Length; i++)
+        int counter = 1;
+
+        for (int i = 0; i < numbers.Length; i += 2)
         {
-            numbers[i] = count++;
-            if (count == 3)
-                count = 1;
+            numbers[i] = numbers[i + 1] = counter++;
+            if (counter == 9) counter = 1;
         }
 
-        System.Random random = new System.Random();
-        for (int i = numbers.Length - 1; i > 0; i--)
-        {
-            int randomIndex = random.Next(0, i + 1);
-
-            int temp = numbers[i];
-            numbers[i] = numbers[randomIndex];
-            numbers[randomIndex] = temp;
-        }
+        System.Random rng = new System.Random();
+        numbers = numbers.OrderBy(_ => rng.Next()).ToArray();
 
         return numbers;
     }
 
-    void Update()
+    private void ClearTiles()
     {
+        foreach (Transform child in tileParent)
+        {
+            Destroy(child.gameObject);
+        }
+    }
+    #endregion
 
-        if (tiletransform.childCount == 0)
-            Restart();
+    #region Helpers
+
+    private void SetBoardSize(string mode)
+    {
+        switch (mode)
+        {
+            case "Easy":
+                gridWidth = EasyModeWidth;
+                gridHeight = EasyModeHeight;
+                break;
+            case "Medium":
+                gridWidth = MediumModeWidth;
+                gridHeight = MediumModeHeight;
+                break;
+            case "Hard":
+                gridWidth = HardModeWidth;
+                gridHeight = HardModeHeight;
+                break;
+        }
     }
 
+    private void UpdateTimer()
+    {
+        remainingTime -= Time.deltaTime;
+        timerText.text = FormatTime(remainingTime);
+
+
+    }
+
+
+
+    private string GetSelectedToggleName()
+    {
+        return toggleGroup.GetComponentsInChildren<Toggle>().FirstOrDefault(t => t.isOn)?.name;
+    }
+
+    private string FormatTime(float time)
+    {
+        int minutes = Mathf.FloorToInt(time / 60);
+        int seconds = Mathf.FloorToInt(time % 60);
+        return $"{minutes:00}:{seconds:00}";
+    }
+
+    private void PlaySound(AudioClip clip)
+    {
+        audioSource.clip = clip;
+        audioSource.Play();
+    }
+
+    private void CheckForGameOver()
+    {
+        if (tiles.Count == 0)
+        {
+            PlaySound(gameOverSound);
+            ClearTiles();
+            ResetGame();
+            isGameOver = true;
+            return;
+        }
+
+        if (remainingTime <= 0)
+        {
+            PlaySound(gameOverSound);
+            ClearTiles();
+            ResetGame();
+            isGameOver = true;
+        }
+    }
+
+    #endregion
 }

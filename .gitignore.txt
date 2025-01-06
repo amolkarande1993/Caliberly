@@ -1,0 +1,93 @@
+# ========== Unity Generated Files ==========
+
+# Ignore these directories
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Mm]emoryCaptures/
+
+# Ignore these files
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+*.pidb.meta
+
+# ========== OS-Specific Files ==========
+
+# macOS
+.DS_Store
+*.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+.Trash-*/
+
+# ========== IDE-Specific Files ==========
+
+# Visual Studio
+*.csproj
+*.unityproj
+*.sln
+*.suo
+*.tmp
+*.user
+*.userosscache
+*.sln.docstates
+
+# JetBrains Rider
+.idea/
+*.idea/
+*.iml
+*.iws
+
+# MonoDevelop
+*.pidb
+*.userprefs
+
+# VSCode
+.vscode/
+
+# ========== Unity Asset Store Tools ==========
+
+# Asset Store Tools
+/Assets/AssetStoreTools*
+
+# ========== Version Control ==========
+
+# Git
+*.git/
+*.gitignore
+.git/
+
+# ========== Large and Build Files ==========
+
+# Build artifacts
+*.apk
+*.aab
+*.unitypackage
+*.ipa
+
+# Large Assets
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.wav
+*.flac
+
+# Exclude auto-generated files by Unity
+*.generated.meta
